@@ -25,10 +25,11 @@ commit messages to maintain a consistent style.
 
 ### Prerequisites
 
-- Python 3.9+
+- uv (Python package manager)
+- Python 3.11+
 - Git
 
-### Install as a package (recommended)
+### Install as a Python package (limited to the Python's virtual environment)
 
 ```bash
 # Install from PyPI (not yet available)
@@ -39,20 +40,18 @@ git clone https://github.com/lukoshkin/ai-traits.git
 cd ai-traits
 pip install .
 
-# The command 'ai-commit' will be available globally
+# The command 'ai-commit' will be available within your virtual environment
 ```
 
-### Manual installation
+### Manual installation (globally accessible thanks to the uv)
 
 ```bash
+# [! As a prerequisite, install uv !]
 # Clone the repository
 git clone https://github.com/lukoshkin/ai-traits.git
 cd ai-traits
 
-# Install dependencies
-pip install click litellm loguru
-
-# Make the script executable
+# Optional: if need be, make the script executable
 chmod +x ai-traits/ai-commit.py
 
 # Optional: Create a symlink to make it available system-wide
@@ -81,10 +80,7 @@ editor =
 openai = your_openai_api_key
 anthropic = your_anthropic_api_key
 google = your_google_api_key
-aws =
-aws_access_key_id = your_aws_access_key_id
-aws_secret_access_key = your_aws_secret_access_key
-aws_region = us-east-1
+aws = your_aws_access_key_id,aws_secret_access_key,aws_region
 
 [PROJECT_TEMPLATES]
 * = Default template text...
@@ -215,29 +211,16 @@ globally. If you're using the manual installation method, you'll need to
 execute the script directly with `./ai-commit.py` or create a symlink as
 described in the installation section.
 
-## Development
-
-To contribute to AI-Traits development:
-
-1. Clone the repository
-2. Create a virtual environment
-3. Install development dependencies
-4. Make your changes
-5. Update tests and documentation
-6. Submit a pull request
-
-```bash
-# Setup development environment
-git clone https://github.com/lukoshkin/ai-traits.git
-cd ai-traits
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -e ".[dev]"
-```
-
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a pull request.
+To contribute to AI-Traits development:
+
+1. Clone the repository
+1. Make your changes
+1. Do some testing (no automated tests yet - feel free to add them!)
+1. Update the documentation (README.md)
+1. Submit a pull request
 
 ## License
 
