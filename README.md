@@ -226,6 +226,39 @@ To contribute to AI-Traits development:
 1. Update the documentation (README.md)
 1. Submit a pull request
 
+## TODO
+
+The following improvements are planned for future development:
+
+### Core Functionality Expansion
+
+- [ ] Expand from AI-Commit to AI-Traits with repository code style analysis
+  - [ ] Analyze coding patterns in repository
+  - [ ] Extract coding style preferences and conventions
+  - [ ] Generate a summary of main coding style points
+
+### Code Organization
+
+- [ ] Restructure ai-commit.py into multiple files
+  - [ ] Create a proper package structure
+  - [ ] Separate concerns (CLI, LLM integration, git operations)
+  - [ ] Implement proper module organization
+
+### Performance Improvements
+
+- [ ] Optimize `ai-commit config` startup time
+  - [ ] Avoid loading unnecessary libraries (e.g., litellm)
+  - [ ] Implement lazy loading for heavy dependencies
+  - [ ] Create a lightweight configuration editor module
+
+### User Experience Enhancements
+
+- [ ] Add visual feedback for LLM operations
+  - [ ] Implement spinner for loading states
+  - [ ] Add thought rendering for reasoning models
+  - [ ] Improve progress indication during operations
+  - [ ] Add examples folder with configuration examples
+
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
