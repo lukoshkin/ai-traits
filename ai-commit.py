@@ -6,8 +6,13 @@ This script takes the output of `git diff --staged` and sends it to an LLM
 to compose a meaningful commit message. It supports multiple LLM providers
 through litellm and can analyze previous commit messages to maintain
 consistent formatting and style.
+
+Configuration supports customizing LLM parameters through the LLM_PARAMS
+section, allowing fine-tuning of model behavior with provider-specific
+parameters like top_p, frequency_penalty, presence_penalty, and more.
 """
 
+import ast
 import configparser
 import os
 import subprocess
@@ -90,6 +95,22 @@ Example: "feat(auth): implement JWT authentication"
         if "PROJECT_TEMPLATES" not in config:
             config["PROJECT_TEMPLATES"] = {}
 
+        config.setdefault("TYPES", {})
+        config["TYPES"].update(
+            {
+                "temperature": "float",
+                "max_tokens": "int",
+                "top_p": "float",
+                "frequency_penalty": "float",
+                "presence_penalty": "float",
+            }
+        )
+        if set(config["TYPES"].values()) != {"float", "int"}:
+            logger.error(
+                "Unsupported types in config TYPES section.\n"
+                "Only 'float' and 'int' are allowed."
+            )
+            sys.exit(1)
         return config
 
     def _create_default_config(
@@ -100,11 +121,9 @@ Example: "feat(auth): implement JWT authentication"
         Args:
             config: ConfigParser object to populate with default values
         """
-        config["DEFAULT"] = {
+        config["MAIN"] = {
             "provider": "openai",
             "model": "gpt-4o",
-            "temperature": "0",
-            "max_tokens": "500",
             "template_commit_count": "10",
             "editor": "",
         }
@@ -114,6 +133,8 @@ Example: "feat(auth): implement JWT authentication"
             "google": "",
             "aws": "",
         }
+        config["LLM_PARAMS"] = {}
+        config["TYPES"] = {}
         config["PROJECT_TEMPLATES"] = {"*": self.DEFAULT_TEMPLATE}
         Path(self.config_path).parent.mkdir(parents=True, exist_ok=True)
         with open(self.config_path, "w", encoding="utf-8") as config_file:
@@ -168,13 +189,76 @@ Example: "feat(auth): implement JWT authentication"
         else:
             os.environ["AWS_REGION_NAME"] = "us-east-1"
 
+    @staticmethod
+    def _validate(value: str, expected_type: str) -> float | int:
+        if expected_type == "float":
+            return float(value)
+        if expected_type == "int":
+            return int(value)
+        raise ValueError(
+            f"Unsupported type '{expected_type}' for value '{value}'. "
+            "Expected 'float' or 'int'."
+        )
+
+    def _validate_dict(self, values: dict):
+        """Validate that all values in a dictionary are of the expected types.
+
+        Args:
+            values: Dictionary with keys and expected types as values
+        Returns:
+            Dictionary with validated values
+        """
+
+        for key, value in values.items():
+            if isinstance(value, dict):
+                self._validate_dict(value)
+            else:
+                expected_type = self.config["TYPES"].get(key)
+                if expected_type is None:
+                    continue
+
+                try:
+                    values[key] = self._validate(value, expected_type)
+                except ValueError as exc:
+                    logger.error(f"Exception during type conversion: {exc}")
+                    logger.error(f"Invalid value '{value}' for key '{key}'")
+                    sys.exit(1)
+
+    def _get_extra_llm_params(self) -> dict:
+        """Extract and parse extra parameters from the LLM_PARAMS section.
+
+        Supports the two following cases:
+        - Simple parameter: key = value -> {"key": "value"}
+        - Parameter wrapped with quotes: key = 'value' ->
+            {"key": ast.literal_eval('value')}
+
+        Returns:
+            Dictionary of extra parameters to pass to the LLM API
+        """
+        extra_params = {}
+        llm_params = self.config["LLM_PARAMS"]
+
+        for key, value in llm_params.items():
+            if not value.startswith(('"', "'")):
+                extra_params[key] = value
+                continue
+
+            try:
+                value = value.strip('"').strip("'")
+                extra_params[key] = ast.literal_eval(value)
+            except Exception as exc:
+                logger.error(f"Error parsing LLM parameter '{key}': {exc}")
+
+        self._validate_dict(extra_params)
+        return extra_params
+
     def _validate_provider_config(self) -> None:
         """Validate that the required API key for the selected provider is set.
 
         Raises:
             SystemExit: If the API key is missing or empty
         """
-        provider = self.config["DEFAULT"]["provider"].lower()
+        provider = self.config["MAIN"]["provider"].lower()
         api_keys = self.config["API_KEYS"]
 
         # Define required environment variables for each provider
@@ -287,7 +371,7 @@ Example: "feat(auth): implement JWT authentication"
         self._ensure_git_repo(repository)
         end = end or "HEAD"
         if start is None:
-            commit_count = self.config["DEFAULT"].getint(
+            commit_count = self.config["MAIN"].getint(
                 "template_commit_count", 10
             )
             try:
@@ -326,9 +410,8 @@ Example: "feat(auth): implement JWT authentication"
 
     def generate_commit_template(self, commits: str) -> str:
         """Generate a commit message template from previous commits."""
-        max_tokens = int(self.config["DEFAULT"]["max_tokens"])
-        provider = self.config["DEFAULT"]["provider"]
-        model = self.config["DEFAULT"]["model"]
+        provider = self.config["MAIN"]["provider"]
+        model = self.config["MAIN"]["model"]
         system_prompt = (
             "You are a git commit style analyzer. Given a list of commit"
             " messages, produce a concise template or set of guidelines that"
@@ -343,23 +426,36 @@ Example: "feat(auth): implement JWT authentication"
             "google": f"google/{model}",
             "bedrock": f"bedrock/{model}",
         }
+
+        # Get extra parameters from config
+        extra_params = self._get_extra_llm_params()
+        logger.trace(f"Extra parameters: {extra_params}")
+
         try:
-            response = completion(
-                model=provider_model_map.get(provider, f"{provider}/{model}"),
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message},
-                    {
-                        "role": "assistant",
-                        "content": (
-                            "Here is the commit template"
-                            " based on the provided commit messages:"
-                        ),
-                    },
-                ],
-                max_tokens=max_tokens,
-                temperature=0,
-            )
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+                {
+                    "role": "assistant",
+                    "content": (
+                        "Here is the commit template"
+                        " based on the provided commit messages:"
+                        ## Cannot end with \n in Claude models
+                    ),
+                },
+            ]
+            if "claude" in self.config["MAIN"]["MODEL"].lower():
+                if "thinking" in extra_params:
+                    messages.pop()
+
+            completion_params = {
+                "model": provider_model_map.get(
+                    provider, f"{provider}/{model}"
+                ),
+                "messages": messages,
+            }
+            completion_params.update(extra_params)
+            response = completion(**completion_params)
             return response.choices[0].message.content.strip()
         except Exception as exc:
             logger.error(f"Error generating commit template: {exc}")
@@ -462,10 +558,8 @@ Example: "feat(auth): implement JWT authentication"
             logger.error("Nothing to commit.")
             sys.exit(1)
 
-        provider = self.config["DEFAULT"]["provider"]
-        model = self.config["DEFAULT"]["model"]
-        temperature = float(self.config["DEFAULT"]["temperature"])
-        max_tokens = int(self.config["DEFAULT"]["max_tokens"])
+        provider = self.config["MAIN"]["provider"]
+        model = self.config["MAIN"]["model"]
         project_name = self.get_project_name()
         system_prompt = self.get_template_for_project(project_name)
 
@@ -479,24 +573,36 @@ Example: "feat(auth): implement JWT authentication"
             "google": f"google/{model}",
             "bedrock": f"bedrock/{model}",
         }
+        # Get extra parameters from config
+        extra_params = self._get_extra_llm_params()
+        logger.trace(f"Extra parameters: {extra_params}")
+
         try:
-            response = completion(
-                model=provider_model_map.get(provider, f"{provider}/{model}"),
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message},
-                    {
-                        "role": "assistant",
-                        "content": (
-                            "Here is the commit message"
-                            " based on the provided changes:"
-                            ## Cannot end with \n in Claude models
-                        ),
-                    },
-                ],
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
+            # Build base parameters
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+                {
+                    "role": "assistant",
+                    "content": (
+                        "Here is the commit message"
+                        " based on the provided changes:"
+                        ## Cannot end with \n in Claude models
+                    ),
+                },
+            ]
+            if "claude" in self.config["MAIN"]["MODEL"].lower():
+                if "thinking" in extra_params:
+                    messages.pop()
+
+            completion_params = {
+                "model": provider_model_map.get(
+                    provider, f"{provider}/{model}"
+                ),
+                "messages": messages,
+            }
+            completion_params.update(extra_params)
+            response = completion(**completion_params)
             result = response.choices[0].message.content.strip()
             if not result:
                 logger.debug(f"Response: {response}")
@@ -576,7 +682,7 @@ Example: "feat(auth): implement JWT authentication"
         Returns:
             The editor command to use
         """
-        if editor := self.config["DEFAULT"].get("editor"):
+        if editor := self.config["MAIN"].get("editor"):
             return editor
 
         try:
@@ -589,7 +695,7 @@ Example: "feat(auth): implement JWT authentication"
         except subprocess.CalledProcessError:
             editor = os.environ.get("EDITOR", "vim")
 
-        self.config["DEFAULT"]["editor"] = editor
+        self.config["MAIN"]["editor"] = editor
         with open(self.config_path, "w", encoding="utf-8") as f:
             self.config.write(f)
 
@@ -648,11 +754,11 @@ def commit(
     ai_commit = AICommit(config_path=ctx.obj.get("CONFIG"))
 
     if provider:
-        ai_commit.config["DEFAULT"]["provider"] = provider
+        ai_commit.config["MAIN"]["provider"] = provider
     if model:
-        ai_commit.config["DEFAULT"]["model"] = model
+        ai_commit.config["MAIN"]["model"] = model
     if temperature is not None:
-        ai_commit.config["DEFAULT"]["temperature"] = str(temperature)
+        ai_commit.config["LLM_PARAMS"]["temperature"] = str(temperature)
 
     diff = ai_commit.get_diff(include_all)
     if not diff:
