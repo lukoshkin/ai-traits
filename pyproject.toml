@@ -12,14 +12,15 @@ classifiers = [
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.9",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Topic :: Software Development :: Version Control :: Git",
 ]
 dependencies = ["click>=8.2.1", "litellm>=1.70.4", "loguru>=0.7.3"]
+
+[project.optional-dependencies]
+aws = ["boto3>=1.38.43"]
 
 [project.urls]
 "Homepage" = "https://github.com/username/ai-traits"

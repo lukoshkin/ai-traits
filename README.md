@@ -19,7 +19,7 @@ commit messages to maintain a consistent style.
   - OpenAI
   - Anthropic (Claude)
   - Google (Gemini)
-  - AWS Bedrock models
+  - AWS Bedrock models (requires boto3)
 
 ## Installation
 
@@ -40,6 +40,9 @@ git clone https://github.com/lukoshkin/ai-traits.git
 cd ai-traits
 pip install .
 
+# To use AWS Bedrock models, install with the aws extras:
+pip install ".[aws]"
+
 # The command 'ai-commit' will be available within your virtual environment
 ```
 
@@ -54,7 +57,10 @@ cd ai-traits
 # Optional: if need be, make the script executable
 chmod +x ai-traits/ai-commit.py
 
-# Optional: Create a symlink to make it available system-wide
+# Optional: install dependencies required for AWS Bedrock models
+uv sync --extra aws
+
+# Create a symlink to make it available system-wide
 ln -s $(pwd)/ai-traits/ai-commit.py /usr/local/bin/ai-commit
 ```
 
@@ -199,9 +205,7 @@ AI-Traits is organized with the following structure:
 
 ```text
 ai-traits/
-├── ai_traits/               # Python package directory
-│   ├── __init__.py          # Package initialization
-│   └── ai_commit.py         # AI-Commit implementation
+├── ai_commit.py             # AI-Commit implementation
 ├── pyproject.toml           # Project metadata and dependencies
 └── README.md                # This file
 ```

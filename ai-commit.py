@@ -663,29 +663,36 @@ def commit(
     ai_commit._validate_provider_config()
 
     commit_message = ai_commit.generate_commit_message(diff)
-    is_confirmed, commit_message = ai_commit.confirm_text(
-        f"Generated commit message:\n{'-' * 50}\n{commit_message}\n{'-' * 50}",
-        "Use this commit message?",
-    )
-    if is_confirmed:
-        if do_commit:
+    if do_commit:
+        is_confirmed, commit_message = ai_commit.confirm_text(
+            f"Generated commit message:\n{'-' * 50}\n{commit_message}\n",
+            f"{'-' * 50}Use this commit message?",
+        )
+        if is_confirmed:
             ai_commit.commit_with_message(commit_message)
-        else:
-            click.echo("\nTo use this message, run:")
-            click.echo(f"git commit -m '{commit_message.splitlines()[0]}'")
-
-            if len(commit_message.splitlines()) > 1:
-                click.echo(
-                    "(Note: The message has multiple lines."
-                    " For full message, use:"
-                )
-                click.echo("git commit -F <(cat << 'EOF'")
-                click.echo(commit_message)
-                click.echo("EOF")
-                click.echo(")")
     else:
-        logger.info("Commit message rejected. Exiting.")
-        sys.exit(0)
+        click.echo(click.style("Short commit message will be:", bold=True))
+        click.echo(
+            click.style(
+                f"git commit -m '{commit_message.splitlines()[0]}'",
+                bold=True,
+                fg="green",
+                bg=8,
+            )
+        )
+
+        if len(commit_message.splitlines()) > 1:
+            click.echo(
+                click.style(
+                    "\nNote: Detailed message includes multiple lines."
+                    "\nTo include them all, one can use:\n",
+                    bold=True,
+                ),
+            )
+            click.echo("git commit -F <(cat << 'EOF'")
+            click.echo(commit_message)
+            click.echo("EOF")
+            click.echo(")")
 
 
 @cli.command(name="mimic")
